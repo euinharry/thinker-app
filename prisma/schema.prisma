@@ -1,0 +1,81 @@
+// Thinker AI Chat - Database Schema
+// PostgreSQL with Prisma ORM
+
+generator client {
+  provider = "prisma-client"
+  output   = "../src/generated/prisma"
+}
+
+datasource db {
+  provider = "postgresql"
+}
+
+/// Chat conversations between user and agents
+model Conversation {
+  id        String   @id @default(uuid()) @db.Uuid
+  title     String   @default("New Conversation")
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  // Relations
+  messages Message[]
+
+  @@map("conversations")
+}
+
+/// Messages in conversations - supports user and agent messages with threading
+model Message {
+  id             String   @id @default(uuid()) @db.Uuid
+  conversationId String   @map("conversation_id") @db.Uuid
+  content        String   @db.Text
+  role           String   @db.VarChar(10) // "user" or "agent"
+  agentId        String?  @map("agent_id") @db.Uuid
+  replyTo        String?  @map("reply_to") @db.Uuid
+  createdAt      DateTime @default(now()) @map("created_at")
+
+  // Relations
+  conversation Conversation @relation(fields: [conversationId], references: [id], onDelete: Cascade)
+  agent        Agent?       @relation(fields: [agentId], references: [id], onDelete: SetNull)
+  parent       Message?     @relation("MessageReplies", fields: [replyTo], references: [id], onDelete: NoAction)
+  replies      Message[]    @relation("MessageReplies")
+
+  // Indexes for performance
+  @@index([conversationId])
+  @@index([agentId])
+  @@index([replyTo])
+  @@index([role])
+  @@index([createdAt])
+  @@map("messages")
+}
+
+/// AI agents with their configurations
+model Agent {
+  id          String   @id @default(uuid()) @db.Uuid
+  name        String   @unique @db.VarChar(50)
+  personality String   @db.Text
+  model       String   @default("mimo-v2.5-pro") @db.VarChar(100)
+  temperature Float    @default(0.7)
+  createdAt   DateTime @default(now()) @map("created_at")
+
+  // Relations
+  messages     Message[]
+  agentConfigs AgentConfig[]
+
+  @@map("agents")
+}
+
+/// Flexible key-value configuration for agents
+model AgentConfig {
+  id          String @id @default(uuid()) @db.Uuid
+  agentId     String @map("agent_id") @db.Uuid
+  configKey   String @map("config_key") @db.VarChar(100)
+  configValue String @map("config_value") @db.Text
+
+  // Relations
+  agent Agent @relation(fields: [agentId], references: [id], onDelete: Cascade)
+
+  // Indexes
+  @@unique([agentId, configKey])
+  @@index([agentId])
+  @@map("agent_configs")
+}
